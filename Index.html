@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport"
+content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+
+<title>Музыкальная сетка</title>
+
+<style>
+
+*{
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+    touch-action:none;
+}
+
+html,body{
+    width:100%;
+    height:100%;
+    overflow:hidden;
+    background:#0f0f0f;
+    font-family:Arial,sans-serif;
+}
+
+canvas{
+    display:block;
+    width:100vw;
+    height:100vh;
+}
+
+.info{
+    position:fixed;
+    top:12px;
+    left:12px;
+    right:12px;
+
+    padding:12px;
+
+    border-radius:16px;
+
+    background:rgba(0,0,0,0.45);
+
+    backdrop-filter:blur(10px);
+
+    color:white;
+
+    font-size:14px;
+    line-height:1.4;
+
+    z-index:10;
+
+    text-align:center;
+}
+
+@media (max-width:700px){
+
+    .info{
+        font-size:13px;
+        padding:10px;
+    }
+
+}
+
+</style>
+</head>
+<body>
+
+<div class="info">
+    Проводи пальцем или мышкой по клеткам — каждая клетка играет свою ноту
+</div>
+
+<canvas id="canvas"></canvas>
+
+<script>
+
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+let w,h,dpr;
+
+function resize(){
+
+    dpr = window.devicePixelRatio || 1;
+
+    w = window.innerWidth;
+    h = window.innerHeight;
+
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+
+    canvas.style.width = w + "px";
+    canvas.style.height = h + "px";
+
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+
+    setupGrid();
+
+    draw();
+}
+
+let cellSize;
+let cols;
+let rows;
+
+function setupGrid(){
+
+    if(w < 500){
+        cellSize = 28;
+    }
+    else if(w < 900){
+        cellSize = 34;
+    }
+    else{
+        cellSize = 42;
+    }
+
+    cols = Math.ceil(w / cellSize);
+    rows = Math.ceil(h / cellSize);
+}
+
+const colors = [
+"#ff4d6d",
+"#ff914d",
+"#ffd84d",
+"#6dff4d",
+"#4dffd2",
+"#4db8ff",
+"#7a6dff",
+"#c24dff"
+];
+
+const notes = [
+130.81,
+146.83,
+164.81,
+174.61,
+196.00,
+220.00,
+246.94,
+261.63,
+293.66,
+329.63,
+349.23,
+392.00,
+440.00,
+493.88
+];
+
+let mouseX = -1000;
+let mouseY = -1000;
+
+function draw(){
+
+    ctx.clearRect(0,0,w,h);
+
+    for(let y=0;y<rows;y++){
+
+        for(let x=0;x<cols;x++){
+
+            const px = x * cellSize;
+            const py = y * cellSize;
+
+            const cx = px + cellSize/2;
+            const cy = py + cellSize/2;
+
+            const dist = Math.hypot(mouseX - cx, mouseY - cy);
+
+            const hover = dist < cellSize * 1.4;
+
+            ctx.fillStyle = hover
+                ? colors[(x+y)%colors.length]
+                : "#181818";
+
+            ctx.fillRect(px,py,cellSize,cellSize);
+
+            ctx.strokeStyle = hover
+                ? "rgba(255,255,255,0.35)"
+                : "rgba(255,255,255,0.06)";
+
+            ctx.strokeRect(px,py,cellSize,cellSize);
+        }
+    }
+}
+
+const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+const audioCtx = new AudioContextClass();
+
+function playTone(freq){
+
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+
+    osc.type = "sine";
+
+    osc.frequency.value = freq;
+
+    gain.gain.setValueAtTime(0.0001, audioCtx.currentTime);
+
+    gain.gain.exponentialRampToValueAtTime(
+        0.15,
+        audioCtx.currentTime + 0.01
+    );
+
+    gain.gain.exponentialRampToValueAtTime(
+        0.0001,
+        audioCtx.currentTime + 0.28
+    );
+
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.3);
+}
+
+const active = new Set();
+
+function interact(x,y){
+
+    mouseX = x;
+    mouseY = y;
+
+    draw();
+
+    const gx = Math.floor(x / cellSize);
+    const gy = Math.floor(y / cellSize);
+
+    const key = gx + "_" + gy;
+
+    if(!active.has(key)){
+
+        active.add(key);
+
+        const noteIndex = (gx + gy) % notes.length;
+
+        playTone(notes[noteIndex]);
+
+        setTimeout(()=>{
+            active.delete(key);
+        },90);
+    }
+}
+
+canvas.addEventListener("mousemove",(e)=>{
+
+    interact(e.clientX,e.clientY);
+
+});
+
+canvas.addEventListener("touchmove",(e)=>{
+
+    e.preventDefault();
+
+    for(const touch of e.touches){
+
+        interact(
+            touch.clientX,
+            touch.clientY
+        );
+    }
+
+},{passive:false});
+
+canvas.addEventListener("touchstart",(e)=>{
+
+    if(audioCtx.state === "suspended"){
+        audioCtx.resume();
+    }
+
+    for(const touch of e.touches){
+
+        interact(
+            touch.clientX,
+            touch.clientY
+        );
+    }
+
+});
+
+window.addEventListener("resize",resize);
+
+resize();
+
+</script>
+
+</body>
+</html>
