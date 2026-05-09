@@ -5,7 +5,7 @@
 <meta name="viewport"
 content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
 
-<title>Музыкальная сетка</title>
+<title>Музыкальная сетка MultiTouch</title>
 
 <style>
 
@@ -54,21 +54,12 @@ canvas{
     text-align:center;
 }
 
-@media (max-width:700px){
-
-    .info{
-        font-size:13px;
-        padding:10px;
-    }
-
-}
-
 </style>
 </head>
 <body>
 
 <div class="info">
-    Проводи пальцем или мышкой по клеткам — каждая клетка играет свою ноту
+    Поддержка multitouch — несколько пальцев одновременно
 </div>
 
 <canvas id="canvas"></canvas>
@@ -148,8 +139,7 @@ const notes = [
 493.88
 ];
 
-let mouseX = -1000;
-let mouseY = -1000;
+const activeTouches = [];
 
 function draw(){
 
@@ -162,29 +152,52 @@ function draw(){
             const px = x * cellSize;
             const py = y * cellSize;
 
-            const cx = px + cellSize/2;
-            const cy = py + cellSize/2;
+            let hover = false;
 
-            const dist = Math.hypot(mouseX - cx, mouseY - cy);
+            for(const t of activeTouches){
 
-            const hover = dist < cellSize * 1.4;
+                const cx = px + cellSize/2;
+                const cy = py + cellSize/2;
+
+                const dist = Math.hypot(
+                    t.x - cx,
+                    t.y - cy
+                );
+
+                if(dist < cellSize * 1.4){
+                    hover = true;
+                    break;
+                }
+            }
 
             ctx.fillStyle = hover
                 ? colors[(x+y)%colors.length]
                 : "#181818";
 
-            ctx.fillRect(px,py,cellSize,cellSize);
+            ctx.fillRect(
+                px,
+                py,
+                cellSize,
+                cellSize
+            );
 
             ctx.strokeStyle = hover
                 ? "rgba(255,255,255,0.35)"
                 : "rgba(255,255,255,0.06)";
 
-            ctx.strokeRect(px,py,cellSize,cellSize);
+            ctx.strokeRect(
+                px,
+                py,
+                cellSize,
+                cellSize
+            );
         }
     }
 }
 
-const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+const AudioContextClass =
+window.AudioContext || window.webkitAudioContext;
+
 const audioCtx = new AudioContextClass();
 
 function playTone(freq){
@@ -196,7 +209,10 @@ function playTone(freq){
 
     osc.frequency.value = freq;
 
-    gain.gain.setValueAtTime(0.0001, audioCtx.currentTime);
+    gain.gain.setValueAtTime(
+        0.0001,
+        audioCtx.currentTime
+    );
 
     gain.gain.exponentialRampToValueAtTime(
         0.15,
@@ -205,24 +221,20 @@ function playTone(freq){
 
     gain.gain.exponentialRampToValueAtTime(
         0.0001,
-        audioCtx.currentTime + 0.28
+        audioCtx.currentTime + 0.25
     );
 
     osc.connect(gain);
     gain.connect(audioCtx.destination);
 
     osc.start();
+
     osc.stop(audioCtx.currentTime + 0.3);
 }
 
 const active = new Set();
 
 function interact(x,y){
-
-    mouseX = x;
-    mouseY = y;
-
-    draw();
 
     const gx = Math.floor(x / cellSize);
     const gy = Math.floor(y / cellSize);
@@ -233,27 +245,29 @@ function interact(x,y){
 
         active.add(key);
 
-        const noteIndex = (gx + gy) % notes.length;
+        const noteIndex =
+        (gx + gy) % notes.length;
 
         playTone(notes[noteIndex]);
 
         setTimeout(()=>{
+
             active.delete(key);
-        },90);
+
+        },70);
     }
 }
 
-canvas.addEventListener("mousemove",(e)=>{
+function updateTouches(touches){
 
-    interact(e.clientX,e.clientY);
+    activeTouches.length = 0;
 
-});
+    for(const touch of touches){
 
-canvas.addEventListener("touchmove",(e)=>{
-
-    e.preventDefault();
-
-    for(const touch of e.touches){
+        activeTouches.push({
+            x: touch.clientX,
+            y: touch.clientY
+        });
 
         interact(
             touch.clientX,
@@ -261,23 +275,53 @@ canvas.addEventListener("touchmove",(e)=>{
         );
     }
 
-},{passive:false});
+    draw();
+}
+
+canvas.addEventListener("mousemove",(e)=>{
+
+    activeTouches.length = 0;
+
+    activeTouches.push({
+        x:e.clientX,
+        y:e.clientY
+    });
+
+    interact(
+        e.clientX,
+        e.clientY
+    );
+
+    draw();
+});
 
 canvas.addEventListener("touchstart",(e)=>{
+
+    e.preventDefault();
 
     if(audioCtx.state === "suspended"){
         audioCtx.resume();
     }
 
-    for(const touch of e.touches){
+    updateTouches(e.touches);
 
-        interact(
-            touch.clientX,
-            touch.clientY
-        );
-    }
+},{passive:false});
 
-});
+canvas.addEventListener("touchmove",(e)=>{
+
+    e.preventDefault();
+
+    updateTouches(e.touches);
+
+},{passive:false});
+
+canvas.addEventListener("touchend",(e)=>{
+
+    e.preventDefault();
+
+    updateTouches(e.touches);
+
+},{passive:false});
 
 window.addEventListener("resize",resize);
 
