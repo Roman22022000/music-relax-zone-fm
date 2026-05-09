@@ -5,7 +5,7 @@
 <meta name="viewport"
 content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
 
-<title>Музыкальная сетка MultiTouch</title>
+<title>MultiTouch Music Grid</title>
 
 <style>
 
@@ -14,44 +14,45 @@ content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable
     padding:0;
     box-sizing:border-box;
     touch-action:none;
+    -webkit-user-select:none;
+    user-select:none;
 }
 
 html,body{
     width:100%;
     height:100%;
     overflow:hidden;
-    background:#0f0f0f;
-    font-family:Arial,sans-serif;
+    background:#101010;
 }
 
 canvas{
     display:block;
     width:100vw;
     height:100vh;
+    touch-action:none;
 }
 
 .info{
     position:fixed;
-    top:12px;
-    left:12px;
-    right:12px;
+    top:10px;
+    left:10px;
+    right:10px;
 
     padding:12px;
 
-    border-radius:16px;
+    color:white;
 
     background:rgba(0,0,0,0.45);
 
-    backdrop-filter:blur(10px);
+    border-radius:14px;
 
-    color:white;
+    font-family:Arial,sans-serif;
 
-    font-size:14px;
-    line-height:1.4;
+    text-align:center;
 
     z-index:10;
 
-    text-align:center;
+    backdrop-filter:blur(10px);
 }
 
 </style>
@@ -59,7 +60,7 @@ canvas{
 <body>
 
 <div class="info">
-    Поддержка multitouch — несколько пальцев одновременно
+    Проводи несколькими пальцами одновременно
 </div>
 
 <canvas id="canvas"></canvas>
@@ -71,12 +72,16 @@ const ctx = canvas.getContext("2d");
 
 let w,h,dpr;
 
+let cellSize;
+let cols;
+let rows;
+
 function resize(){
 
     dpr = window.devicePixelRatio || 1;
 
-    w = window.innerWidth;
-    h = window.innerHeight;
+    w = innerWidth;
+    h = innerHeight;
 
     canvas.width = w * dpr;
     canvas.height = h * dpr;
@@ -86,29 +91,16 @@ function resize(){
 
     ctx.setTransform(dpr,0,0,dpr,0,0);
 
-    setupGrid();
-
-    draw();
-}
-
-let cellSize;
-let cols;
-let rows;
-
-function setupGrid(){
-
-    if(w < 500){
-        cellSize = 28;
-    }
-    else if(w < 900){
-        cellSize = 34;
-    }
-    else{
+    if(w < 600){
+        cellSize = 30;
+    }else{
         cellSize = 42;
     }
 
     cols = Math.ceil(w / cellSize);
     rows = Math.ceil(h / cellSize);
+
+    draw();
 }
 
 const colors = [
@@ -117,7 +109,7 @@ const colors = [
 "#ffd84d",
 "#6dff4d",
 "#4dffd2",
-"#4db8ff",
+"#4da6ff",
 "#7a6dff",
 "#c24dff"
 ];
@@ -136,10 +128,10 @@ const notes = [
 349.23,
 392.00,
 440.00,
-493.88
+523.25
 ];
 
-const activeTouches = [];
+const activePointers = new Map();
 
 function draw(){
 
@@ -152,27 +144,26 @@ function draw(){
             const px = x * cellSize;
             const py = y * cellSize;
 
-            let hover = false;
+            let active = false;
 
-            for(const t of activeTouches){
+            activePointers.forEach((p)=>{
 
                 const cx = px + cellSize/2;
                 const cy = py + cellSize/2;
 
                 const dist = Math.hypot(
-                    t.x - cx,
-                    t.y - cy
+                    p.x - cx,
+                    p.y - cy
                 );
 
-                if(dist < cellSize * 1.4){
-                    hover = true;
-                    break;
+                if(dist < cellSize * 0.9){
+                    active = true;
                 }
-            }
+            });
 
-            ctx.fillStyle = hover
-                ? colors[(x+y)%colors.length]
-                : "#181818";
+            ctx.fillStyle = active
+            ? colors[(x+y)%colors.length]
+            : "#181818";
 
             ctx.fillRect(
                 px,
@@ -181,9 +172,9 @@ function draw(){
                 cellSize
             );
 
-            ctx.strokeStyle = hover
-                ? "rgba(255,255,255,0.35)"
-                : "rgba(255,255,255,0.06)";
+            ctx.strokeStyle = active
+            ? "rgba(255,255,255,0.35)"
+            : "rgba(255,255,255,0.05)";
 
             ctx.strokeRect(
                 px,
@@ -205,7 +196,7 @@ function playTone(freq){
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
 
-    osc.type = "sine";
+    osc.type = "triangle";
 
     osc.frequency.value = freq;
 
@@ -215,7 +206,7 @@ function playTone(freq){
     );
 
     gain.gain.exponentialRampToValueAtTime(
-        0.15,
+        0.18,
         audioCtx.currentTime + 0.01
     );
 
@@ -232,18 +223,18 @@ function playTone(freq){
     osc.stop(audioCtx.currentTime + 0.3);
 }
 
-const active = new Set();
+const playedCells = new Set();
 
-function interact(x,y){
+function triggerCell(x,y){
 
     const gx = Math.floor(x / cellSize);
     const gy = Math.floor(y / cellSize);
 
     const key = gx + "_" + gy;
 
-    if(!active.has(key)){
+    if(!playedCells.has(key)){
 
-        active.add(key);
+        playedCells.add(key);
 
         const noteIndex =
         (gx + gy) % notes.length;
@@ -252,50 +243,29 @@ function interact(x,y){
 
         setTimeout(()=>{
 
-            active.delete(key);
+            playedCells.delete(key);
 
-        },70);
+        },60);
     }
 }
 
-function updateTouches(touches){
+function updatePointer(id,x,y){
 
-    activeTouches.length = 0;
+    activePointers.set(id,{x,y});
 
-    for(const touch of touches){
-
-        activeTouches.push({
-            x: touch.clientX,
-            y: touch.clientY
-        });
-
-        interact(
-            touch.clientX,
-            touch.clientY
-        );
-    }
+    triggerCell(x,y);
 
     draw();
 }
 
-canvas.addEventListener("mousemove",(e)=>{
+function removePointer(id){
 
-    activeTouches.length = 0;
-
-    activeTouches.push({
-        x:e.clientX,
-        y:e.clientY
-    });
-
-    interact(
-        e.clientX,
-        e.clientY
-    );
+    activePointers.delete(id);
 
     draw();
-});
+}
 
-canvas.addEventListener("touchstart",(e)=>{
+canvas.addEventListener("pointerdown",(e)=>{
 
     e.preventDefault();
 
@@ -303,25 +273,40 @@ canvas.addEventListener("touchstart",(e)=>{
         audioCtx.resume();
     }
 
-    updateTouches(e.touches);
+    canvas.setPointerCapture(e.pointerId);
 
-},{passive:false});
+    updatePointer(
+        e.pointerId,
+        e.clientX,
+        e.clientY
+    );
 
-canvas.addEventListener("touchmove",(e)=>{
+});
 
-    e.preventDefault();
+canvas.addEventListener("pointermove",(e)=>{
 
-    updateTouches(e.touches);
+    if(activePointers.has(e.pointerId)){
 
-},{passive:false});
+        updatePointer(
+            e.pointerId,
+            e.clientX,
+            e.clientY
+        );
+    }
 
-canvas.addEventListener("touchend",(e)=>{
+});
 
-    e.preventDefault();
+canvas.addEventListener("pointerup",(e)=>{
 
-    updateTouches(e.touches);
+    removePointer(e.pointerId);
 
-},{passive:false});
+});
+
+canvas.addEventListener("pointercancel",(e)=>{
+
+    removePointer(e.pointerId);
+
+});
 
 window.addEventListener("resize",resize);
 
